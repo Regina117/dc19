@@ -1,0 +1,3 @@
+FROM tomcat:latest
+WORKDIR /usr/local/tomcat/webapps/
+COPY --from=build-image /app/src/web/app/target/*.war ./
