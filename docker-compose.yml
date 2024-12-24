@@ -2,31 +2,25 @@ version: '3.3'
 
 services:
   build-service:
-    build:
-      context: .
-      dockerfile: Dockerfile.build  
-    container_name: geoserver-build
+    image: "158.160.145.70:8123/mydockerrepo/geoserver_build:latest"  
+    container_name: geoserver_build
     volumes:
       - .:/app  
     command: mvn -e package -DskipTests 
     networks:
       - app-network
-    image: build-image
 
   prod-service:
-    build:
-      context: .
-      dockerfile: Dockerfile.prod  
-    container_name: geoserver-prod
+    image: "158.160.145.70:8123/mydockerrepo/geoserver_prod:latest" 
+    container_name: geoserver_prod
     ports:
       - "8081:8080"  
     depends_on:
       - build-service  
     networks:
       - app-network
-    image: build-prod
-
 
 networks:
   app-network:
     driver: bridge
+

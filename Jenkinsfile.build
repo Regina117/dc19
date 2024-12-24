@@ -1,0 +1,52 @@
+pipeline {
+    agent any
+    environment {
+        DOCKER_REGISTRY = "158.160.145.70:8123"  
+        REPO_NAME = "mydockerrepo"               
+        IMAGE_NAME_BUILD = "geoserver_build"     
+        IMAGE_NAME_PROD = "geoserver_prod"            
+        NEXUS_URL = "http://158.160.145.70:8123/repository/"  
+        NEXUS_CREDENTIALS = "nexus-credentials" 
+    }
+    stages {
+        stage('Code Checkout') {
+            steps {
+                checkout scmGit(branches: [[name: '*/main']], extensions: [], userRemoteConfigs: [[url: 'https://github.com/Regina117/dc19.git']])
+            }
+        }
+        stage('Build Docker Imagebuild') {
+            steps {
+                script {
+                    sh "docker build -f Dockerfile.build -t ${DOCKER_REGISTRY}/${REPO_NAME}/${IMAGE_NAME_BUILD}:latest ."
+                }
+            }
+        }
+        stage('Build Docker Imageprod') {
+            steps {
+                script {
+                    sh "docker build -f Dockerfile.prod -t ${DOCKER_REGISTRY}/${REPO_NAME}/${IMAGE_NAME_PROD}:latest ."
+                }
+            }
+        }
+        stage('Push Image to Nexus') {
+            steps {
+                script {
+                    echo "Logging in to Docker registry..."
+                    withCredentials([usernamePassword(credentialsId: "${NEXUS_CREDENTIALS}", usernameVariable: 'DOCKER_USERNAME', passwordVariable: 'DOCKER_PASSWORD')]) {
+                        sh """
+                            docker login ${DOCKER_REGISTRY} -u ${DOCKER_USERNAME} -p ${DOCKER_PASSWORD}
+                        """
+                    }
+                    echo "Pushing Docker image to Nexus..."
+                    sh "docker push ${DOCKER_REGISTRY}/${REPO_NAME}/${IMAGE_NAME_BUILD}:latest"
+                    sh "docker push ${DOCKER_REGISTRY}/${REPO_NAME}/${IMAGE_NAME_PROD}:latest"
+                }
+            }
+        }              
+    }
+}
+
+
+
+
+    
