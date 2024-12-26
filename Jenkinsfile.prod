@@ -1,49 +1,97 @@
 pipeline {
     agent any
     environment {
-        DOCKER_REGISTRY = "158.160.145.70:8123"
-        REPO_NAME = "mydockerrepo"
-        IMAGE_NAME_BUILD = "geoserver_build"
-        IMAGE_NAME_PROD = "geoserver_prod"
-        NEXUS_CREDENTIALS = "nexus-credentials"
-        COMPOSE_FILE = "docker-compose.yml"
-        TOMCAT_SERVER = "158.160.137.243:8080"
-        TOMCAT_CREDENTIALS = "dd79bb68-ab91-4d6a-9530-bd0f093c8020"
+        DOCKER_REGISTRY = '158.160.156.193:8123'
+        REPO_NAME = 'mydockerrepo'
+        IMAGE_NAME_BUILD = 'geoserver_build'
+        IMAGE_NAME_PROD = 'geoserver_prod'
+        NEXUS_CREDENTIALS = 'nexus-credentials'
+        GIT_REPO_URL = 'https://github.com/Regina117/dc19.git'
+        COMPOSE_FILE = '/opt/docker-compose.yml'
+        TOMCAT_SERVER = '130.193.35.32'
+        TOMCAT_CREDENTIALS = 'tomcat'
+        SSH_KEY = '/.ssh/key.' 
     }
     stages {
-        stage('Pull Docker Images from Nexus') {
+        stage('Clone Repository') {
             steps {
                 script {
-                    echo "Logging in to Docker registry..."
+                    echo 'Cloning repository...'
+                    git branch: 'main', url: "${GIT_REPO_URL}"
+                }
+            }
+        }
+
+        stage('Login to Docker Registry') {
+            steps {
+                script {
+                    echo 'Logging in to Docker registry...'
                     withCredentials([usernamePassword(credentialsId: "${NEXUS_CREDENTIALS}", usernameVariable: 'DOCKER_USERNAME', passwordVariable: 'DOCKER_PASSWORD')]) {
                         sh """
                             docker login ${DOCKER_REGISTRY} -u ${DOCKER_USERNAME} -p ${DOCKER_PASSWORD}
                         """
                     }
-                    echo "Pulling Docker images from Nexus..."
-                    sh "docker pull ${DOCKER_REGISTRY}/${REPO_NAME}/${IMAGE_NAME_BUILD}:latest"
-                    sh "docker pull ${DOCKER_REGISTRY}/${REPO_NAME}/${IMAGE_NAME_PROD}:latest"
                 }
             }
         }
-        stage('Deploy with Docker Compose') {
+
+        stage('Pull Docker Images') {
             steps {
                 script {
-                    echo "Deploying with Docker Compose..."
+                    echo 'Pulling Docker images...'
                     sh """
-                        docker-compose -f ${COMPOSE_FILE} up -d
+                        docker pull ${DOCKER_REGISTRY}/${REPO_NAME}/${IMAGE_NAME_BUILD}:latest
+                        docker pull ${DOCKER_REGISTRY}/${REPO_NAME}/${IMAGE_NAME_PROD}:latest
                     """
                 }
             }
         }
+
+        stage('Deploy with Docker Compose') {
+            steps {
+                script {
+                    echo 'Deploying with Docker Compose...'
+                    sh """
+                        scp -i ${SSH_KEY} -o StrictHostKeyChecking=no ${COMPOSE_FILE} root@${TOMCAT_SERVER}:${COMPOSE_FILE}
+                        ssh -i ${SSH_KEY} -o StrictHostKeyChecking=no root@${TOMCAT_SERVER} \
+                        'docker-compose -f ${COMPOSE_FILE} pull && docker-compose -f ${COMPOSE_FILE} up -d'
+                    """
+                }
+            }
+        }
+
         stage('Deploy WAR to Tomcat') {
             steps {
                 script {
-                    echo "Deploying WAR to Tomcat..."
-                    sh "mvn clean package -DskipTests"  
-                    deploy adapters: [tomcat9(credentialsId: TOMCAT_CREDENTIALS, path: '', url: TOMCAT_SERVER)], contextPath: 'geoserver', war: '**/*.war'
+                    echo 'Deploying WAR file to Tomcat...'
+                    deploy adapters: [tomcat9(credentialsId: "${TOMCAT_CREDENTIALS}", path: '', url: "http://${TOMCAT_SERVER}:8080/")], 
+                           contextPath: 'geoserver', war: '**/*.war'
                 }
             }
         }
     }
+    post {
+        always {
+            script {
+                echo 'Pipeline finished.'
+            }
+        }
+        success {
+            script {
+                echo 'Deployment succeeded!'
+            }
+        }
+        failure {
+            script {
+                echo 'Deployment failed. Check logs for details.'
+            }
+        }
+    }
 }
+
+
+
+
+
+
+
